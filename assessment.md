@@ -100,7 +100,7 @@ C - Combines services into one container
 
 D - Creates backups
 
----
+----
 
 Q10: Microservices introduce more operational complexity compared to monolithic applications?
 
