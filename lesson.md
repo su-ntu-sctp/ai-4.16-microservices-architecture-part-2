@@ -83,7 +83,7 @@ Go to https://start.spring.io/
 **Configuration:**
 - **Project:** Maven
 - **Language:** Java
-- **Spring Boot:** 3.2.2 (or latest 3.x)
+- **Spring Boot:** 3.5.11 (or latest stable 3.x — avoid SNAPSHOT versions)
 - **Group:** com.example
 - **Artifact:** user-service
 - **Name:** user-service
@@ -99,6 +99,8 @@ Go to https://start.spring.io/
 
 **Click "Generate"** → Download → Extract to `microservices-demo/user-service/`
 
+> ⚠️ **Note:** When you extract the zip, it may create a nested folder (e.g., `user-service/user-service/`). Make sure `pom.xml` is directly inside `user-service/`, not in a subfolder. If nested, move all files up one level.
+
 ---
 
 ### Step 3: Create Order Service
@@ -110,7 +112,7 @@ Go to https://start.spring.io/
 **Configuration:**
 - **Project:** Maven
 - **Language:** Java
-- **Spring Boot:** 3.2.2
+- **Spring Boot:** 3.5.11 (or latest stable 3.x — avoid SNAPSHOT versions)
 - **Group:** com.example
 - **Artifact:** order-service
 - **Name:** order-service
@@ -125,6 +127,8 @@ Go to https://start.spring.io/
 - Lombok
 
 **Click "Generate"** → Download → Extract to `microservices-demo/order-service/`
+
+> ⚠️ **Note:** Same as above — ensure `pom.xml` is directly inside `order-service/`, not nested.
 
 ---
 
@@ -181,6 +185,8 @@ public class User {
     private String email;
 }
 ```
+
+> ℹ️ **Note:** The table is named `users` (not `user`) because `user` is a reserved keyword in PostgreSQL.
 
 ---
 
@@ -307,6 +313,8 @@ spring.jpa.show-sql=true
 spring.application.name=user-service
 ```
 
+> ℹ️ **About environment variables:** The `${VARIABLE:default}` syntax means: use the environment variable if set, otherwise use the default value. When running locally, defaults are used. When running via Docker Compose, the values are provided in `docker-compose.yml`.
+
 ---
 
 ### Step 6: Create Dockerfile for User Service
@@ -338,6 +346,70 @@ target/maven-status/
 .vscode/
 *.md
 ```
+
+---
+
+## ✅ Test User Service Locally
+
+Before building Order Service, verify User Service works correctly.
+
+### Step 1: Create the local database
+
+Spring Boot will auto-create the **tables**, but the **database** must exist first. Create `userdb` using DBeaver:
+
+1. In DBeaver, right-click **Databases** under your local PostgreSQL connection (localhost:5432)
+2. Select **Create New Database**
+3. Name it `userdb` → Click **OK**
+
+Or via terminal:
+```bash
+sudo service postgresql start
+psql -U postgres -c "CREATE DATABASE userdb;"
+```
+
+### Step 2: Run User Service
+
+```bash
+cd microservices-demo/user-service
+mvn spring-boot:run
+```
+
+Wait until you see:
+```
+Started UserServiceApplication in X.XXX seconds
+```
+
+### Step 3: Test endpoints in Postman
+
+**Create a user:**
+- Method: `POST`
+- URL: `http://localhost:8081/api/users`
+- Body (JSON):
+```json
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john@example.com"
+}
+```
+Expected: `201 Created` with user object including `id`
+
+**Get all users:**
+- Method: `GET`
+- URL: `http://localhost:8081/api/users`
+Expected: `200 OK` with array of users
+
+**Get user by ID:**
+- Method: `GET`
+- URL: `http://localhost:8081/api/users/1`
+Expected: `200 OK` with user object
+
+**Get non-existent user:**
+- Method: `GET`
+- URL: `http://localhost:8081/api/users/999`
+Expected: `404 Not Found`
+
+✅ Once all endpoints work, stop the service (`Ctrl+C`) and move to Order Service.
 
 ---
 
@@ -530,6 +602,11 @@ public class AppConfig {
 }
 ```
 
+> ⚠️ **Important:** `AppConfig.java` must be placed at:
+> `src/main/java/com/example/orderservice/config/AppConfig.java`
+>
+> If placed anywhere outside `src/`, Spring Boot will not detect it and the application will fail to start with: `Field restTemplate ... required a bean of type 'RestTemplate' that could not be found.`
+
 ---
 
 ### Step 6: Create Order Controller
@@ -575,12 +652,12 @@ public class OrderController {
     }
     
     @PostMapping
-    public ResponseEntity<Order> createOrder(@RequestBody Order order) {
+    public ResponseEntity<?> createOrder(@RequestBody Order order) {
         try {
             Order createdOrder = orderService.createOrder(order);
             return new ResponseEntity<>(createdOrder, HttpStatus.CREATED);
         } catch (Exception e) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+            return new ResponseEntity<>("User not found with ID: " + order.getUserId(), HttpStatus.BAD_REQUEST);
         }
     }
 }
@@ -654,8 +731,6 @@ target/maven-status/
 **File:** `microservices-demo/docker-compose.yml`
 
 ```yaml
-version: "3.9"
-
 services:
   # User Service
   user-service:
@@ -808,13 +883,17 @@ docker compose up -d --build
 
 **Expected output:**
 ```
-[+] Running 5/5
+[+] Running 7/7
  ✔ Network microservices-demo_microservices-network  Created
- ✔ Container user-db                                  Started
- ✔ Container order-db                                 Started
- ✔ Container user-service                             Started
- ✔ Container order-service                            Started
+ ✔ Container user-db                                  Created
+ ✔ Container order-db                                 Created
+ ✔ Container user-service                             Created
+ ✔ Container order-service                            Created
 ```
+
+> ⚠️ **VS Code users:** If you run Docker Compose via VS Code task, the terminal will show:
+> `Terminal will be reused by tasks, press any key to close it.`
+> **Do NOT press any key** — the containers are still running in the background. Open a **new terminal** to continue.
 
 ---
 
@@ -865,256 +944,162 @@ Tomcat started on port 8080
 
 ## Part 6: Testing the Microservices (30 minutes)
 
-### Step 1: Test User Service
+### Viewing Data in DBeaver
 
-**Create a user:**
+The Docker databases run on **different ports** than your local PostgreSQL. To view data in DBeaver, you need to add new connections:
 
-```bash
-curl -X POST http://localhost:8081/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john.doe@example.com"
-  }'
-```
+**Add connection for user-db (Docker):**
+1. In DBeaver, click **New Database Connection**
+2. Select **PostgreSQL**
+3. Set:
+   - Host: `localhost`
+   - Port: `5433`
+   - Database: `userdb`
+   - Username: `postgres`
+   - Password: `postgres`
+4. Click **Test Connection** → **Finish**
 
-**Expected response:**
+**Add connection for order-db (Docker):**
+1. Same steps, but:
+   - Port: `5434`
+   - Database: `orderdb`
+
+> ℹ️ These connections only work when Docker containers are running.
+
+---
+
+### Testing with Postman
+
+Open Postman and create a new collection called **Microservices Demo**.
+
+#### User Service Endpoints
+
+**1. Create User**
+- Method: `POST`
+- URL: `http://localhost:8081/api/users`
+- Headers: `Content-Type: application/json`
+- Body (raw JSON):
 ```json
 {
-  "id": 1,
   "firstName": "John",
   "lastName": "Doe",
   "email": "john.doe@example.com"
 }
 ```
+Expected: `201 Created`
 
-**Create more users:**
-
-```bash
-curl -X POST http://localhost:8081/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "firstName": "Jane",
-    "lastName": "Smith",
-    "email": "jane.smith@example.com"
-  }'
-
-curl -X POST http://localhost:8081/api/users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "firstName": "Bob",
-    "lastName": "Johnson",
-    "email": "bob.johnson@example.com"
-  }'
+**2. Create More Users**
+```json
+{"firstName": "Jane", "lastName": "Smith", "email": "jane.smith@example.com"}
+{"firstName": "Bob", "lastName": "Johnson", "email": "bob.johnson@example.com"}
 ```
+
+**3. Get All Users**
+- Method: `GET`
+- URL: `http://localhost:8081/api/users`
+
+Expected:
+```json
+[
+  {"id": 1, "firstName": "John", "lastName": "Doe", "email": "john.doe@example.com"},
+  {"id": 2, "firstName": "Jane", "lastName": "Smith", "email": "jane.smith@example.com"},
+  {"id": 3, "firstName": "Bob", "lastName": "Johnson", "email": "bob.johnson@example.com"}
+]
+```
+
+**4. Get User by ID**
+- Method: `GET`
+- URL: `http://localhost:8081/api/users/1`
+
+Expected: `200 OK` with single user object
 
 ---
 
-### Step 2: Get All Users
+#### Order Service Endpoints
 
+**5. Create Order (Valid User)**
+- Method: `POST`
+- URL: `http://localhost:8082/api/orders`
+- Headers: `Content-Type: application/json`
+- Body:
+```json
+{
+  "userId": 1,
+  "productName": "Laptop",
+  "quantity": 1,
+  "totalPrice": 1299.99
+}
+```
+Expected: `201 Created` — proves Order Service successfully called User Service!
+
+**6. Create More Orders**
+```json
+{"userId": 2, "productName": "Mouse", "quantity": 2, "totalPrice": 49.98}
+{"userId": 1, "productName": "Keyboard", "quantity": 1, "totalPrice": 79.99}
+```
+
+**7. Get All Orders**
+- Method: `GET`
+- URL: `http://localhost:8082/api/orders`
+
+**8. Get Orders by User**
+- Method: `GET`
+- URL: `http://localhost:8082/api/orders/user/1`
+
+Expected: all orders for userId 1
+
+**9. Test Error Handling (Invalid User)**
+- Method: `POST`
+- URL: `http://localhost:8082/api/orders`
+- Body:
+```json
+{
+  "userId": 999,
+  "productName": "Monitor",
+  "quantity": 1,
+  "totalPrice": 299.99
+}
+```
+Expected: `400 Bad Request` with message `User not found with ID: 999`
+
+This proves inter-service validation is working! ✅
+
+---
+
+### Testing with curl
+
+Alternatively, test via curl in terminal:
+
+**Create a user:**
+```bash
+curl -X POST http://localhost:8081/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"firstName": "John", "lastName": "Doe", "email": "john.doe@example.com"}'
+```
+
+**Get all users:**
 ```bash
 curl http://localhost:8081/api/users
 ```
 
-**Expected response:**
-```json
-[
-  {
-    "id": 1,
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john.doe@example.com"
-  },
-  {
-    "id": 2,
-    "firstName": "Jane",
-    "lastName": "Smith",
-    "email": "jane.smith@example.com"
-  },
-  {
-    "id": 3,
-    "firstName": "Bob",
-    "lastName": "Johnson",
-    "email": "bob.johnson@example.com"
-  }
-]
-```
-
----
-
-### Step 3: Get User by ID
-
-```bash
-curl http://localhost:8081/api/users/1
-```
-
-**Expected response:**
-```json
-{
-  "id": 1,
-  "firstName": "John",
-  "lastName": "Doe",
-  "email": "john.doe@example.com"
-}
-```
-
----
-
-### Step 4: Test Order Service (Creates Order + Validates User)
-
-**Create order for existing user (userId=1):**
-
+**Create order for valid user:**
 ```bash
 curl -X POST http://localhost:8082/api/orders \
   -H "Content-Type: application/json" \
-  -d '{
-    "userId": 1,
-    "productName": "Laptop",
-    "quantity": 1,
-    "totalPrice": 1299.99
-  }'
+  -d '{"userId": 1, "productName": "Laptop", "quantity": 1, "totalPrice": 1299.99}'
 ```
 
-**Expected response:**
-```json
-{
-  "id": 1,
-  "userId": 1,
-  "productName": "Laptop",
-  "quantity": 1,
-  "totalPrice": 1299.99,
-  "status": "PENDING",
-  "orderDate": "2026-02-03T12:30:45"
-}
-```
-
-**This proves Order Service successfully called User Service to validate user!**
-
----
-
-### Step 5: Create More Orders
-
+**Test invalid user (error handling):**
 ```bash
-curl -X POST http://localhost:8082/api/orders \
+curl -v -X POST http://localhost:8082/api/orders \
   -H "Content-Type: application/json" \
-  -d '{
-    "userId": 2,
-    "productName": "Mouse",
-    "quantity": 2,
-    "totalPrice": 49.98
-  }'
-
-curl -X POST http://localhost:8082/api/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": 1,
-    "productName": "Keyboard",
-    "quantity": 1,
-    "totalPrice": 79.99
-  }'
+  -d '{"userId": 999, "productName": "Monitor", "quantity": 1, "totalPrice": 299.99}'
 ```
 
----
-
-### Step 6: Get All Orders
-
-```bash
-curl http://localhost:8082/api/orders
-```
-
-**Expected response:**
-```json
-[
-  {
-    "id": 1,
-    "userId": 1,
-    "productName": "Laptop",
-    "quantity": 1,
-    "totalPrice": 1299.99,
-    "status": "PENDING",
-    "orderDate": "2026-02-03T12:30:45"
-  },
-  {
-    "id": 2,
-    "userId": 2,
-    "productName": "Mouse",
-    "quantity": 2,
-    "totalPrice": 49.98,
-    "status": "PENDING",
-    "orderDate": "2026-02-03T12:31:12"
-  },
-  {
-    "id": 3,
-    "userId": 1,
-    "productName": "Keyboard",
-    "quantity": 1,
-    "totalPrice": 79.99,
-    "status": "PENDING",
-    "orderDate": "2026-02-03T12:31:45"
-  }
-]
-```
-
----
-
-### Step 7: Get Orders by User
-
+**Get orders by user:**
 ```bash
 curl http://localhost:8082/api/orders/user/1
 ```
-
-**Expected response:**
-```json
-[
-  {
-    "id": 1,
-    "userId": 1,
-    "productName": "Laptop",
-    "quantity": 1,
-    "totalPrice": 1299.99,
-    "status": "PENDING",
-    "orderDate": "2026-02-03T12:30:45"
-  },
-  {
-    "id": 3,
-    "userId": 1,
-    "productName": "Keyboard",
-    "quantity": 1,
-    "totalPrice": 79.99,
-    "status": "PENDING",
-    "orderDate": "2026-02-03T12:31:45"
-  }
-]
-```
-
----
-
-### Step 8: Test Error Handling (Invalid User)
-
-**Try to create order for non-existent user:**
-
-```bash
-curl -X POST http://localhost:8082/api/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": 999,
-    "productName": "Monitor",
-    "quantity": 1,
-    "totalPrice": 299.99
-  }'
-```
-
-**Expected response:**
-- HTTP 400 Bad Request
-- Order NOT created
-
-**This proves:**
-- Order Service called User Service
-- User Service returned 404
-- Order Service rejected the order
-
-**Inter-service validation working!** ✅
 
 ---
 
@@ -1123,10 +1108,8 @@ curl -X POST http://localhost:8082/api/orders \
 **Check Order Service logs to see User Service call:**
 
 ```bash
-docker compose logs order-service | grep "User not found"
+docker compose logs order-service
 ```
-
-Should see error message about user 999 not found.
 
 ---
 
@@ -1251,53 +1234,20 @@ USER_SERVICE_URL=http://user-service:8080
    │User Svc │        │User Svc│        │Order   │
    │Instance1│        │Instance2│        │Service │
    └─────────┘        └────────┘        └────────┘
-     :8081              :8082          Calls any
-                                       available
-                                       instance
-
-How it works:
-1. User Service instances register with Service Registry
-2. Order Service queries registry for User Service
-3. Registry returns available instances
-4. Order Service calls one of them (load balanced)
 ```
 
-**Benefits:**
-- ✅ Dynamic instance discovery
-- ✅ Automatic load balancing
-- ✅ Fault tolerance (if one instance down, call another)
+**Popular Tools:** Netflix Eureka, Consul, Kubernetes Service Discovery
 
-**Popular Tools:**
-- Netflix Eureka (Spring Cloud)
-- Consul
-- etcd
-- Kubernetes Service Discovery
+> ℹ️ The code examples below are illustrative — not required to implement in this lesson.
 
----
-
-### Service Discovery with Eureka (Example)
-
-**How it would work:**
-
-**1. Setup Eureka Server:**
-```yaml
-# Eureka Server
-eureka-server:
-  image: springcloud/eureka
-  ports:
-    - "8761:8761"
-```
-
-**2. User Service registers:**
+**Example - User Service registers:**
 ```properties
-# User Service
 eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka
 eureka.instance.instance-id=${spring.application.name}:${random.value}
 ```
 
-**3. Order Service queries Eureka:**
+**Example - Order Service queries Eureka:**
 ```java
-// Instead of hardcoded URL
 @LoadBalanced
 @Bean
 public RestTemplate restTemplate() {
@@ -1309,8 +1259,7 @@ String url = "http://user-service/api/users/" + userId;
 User user = restTemplate.getForObject(url, User.class);
 ```
 
-**Reference:**
-https://spring.io/guides/gs/service-registration-and-discovery/
+**Reference:** https://spring.io/guides/gs/service-registration-and-discovery/
 
 ---
 
@@ -1324,111 +1273,42 @@ User Service:  http://localhost:8081/api/users
 Order Service: http://localhost:8082/api/orders
 ```
 
-**Problem:**
-- Multiple entry points
-- CORS issues
-- Authentication for each service
-- Client knows internal architecture
-
----
-
-### What is an API Gateway?
-
 **API Gateway** = Single entry point for all services.
 
 ```
-┌─────────────────────────────────────────────────┐
-│             API Gateway Pattern                  │
-└─────────────────────────────────────────────────┘
-
                   ┌──────────────┐
      Client ─────>│ API Gateway  │
     (Browser)     │   :8080      │
                   └──────┬───────┘
                          │
         ┌────────────────┼────────────────┐
-        │                │                │
-        │ Route          │ Route          │
         │ /users         │ /orders        │
-        │                │                │
-   ┌────▼────┐      ┌───▼────┐      ┌───▼────┐
-   │User Svc │      │Order   │      │Payment │
-   │:8081    │      │Service │      │Service │
-   └─────────┘      │:8082   │      │:8083   │
-                    └────────┘      └────────┘
-
-Client makes ONE call:
-- GET http://api-gateway:8080/users → routes to User Service
-- POST http://api-gateway:8080/orders → routes to Order Service
-- POST http://api-gateway:8080/payments → routes to Payment Service
+   ┌────▼────┐      ┌───▼────┐
+   │User Svc │      │Order   │
+   │:8081    │      │Service │
+   └─────────┘      │:8082   │
+                    └────────┘
 ```
 
-**Benefits:**
-- ✅ Single entry point
-- ✅ Centralized authentication
-- ✅ Rate limiting
-- ✅ Request routing
-- ✅ Load balancing
-- ✅ Hide internal structure
+**Popular Tools:** Spring Cloud Gateway, Kong, AWS API Gateway
 
-**Popular Tools:**
-- Spring Cloud Gateway
-- Netflix Zuul
-- Kong
-- AWS API Gateway
-- Azure API Management
+> ℹ️ The code example below is illustrative — not required to implement in this lesson.
 
----
-
-### API Gateway with Spring Cloud Gateway (Example)
-
-**How it would work:**
-
-**1. Add API Gateway service:**
-```yaml
-# docker-compose.yml
-api-gateway:
-  image: api-gateway
-  ports:
-    - "8080:8080"
-  environment:
-    USER_SERVICE_URL: http://user-service:8081
-    ORDER_SERVICE_URL: http://order-service:8082
-```
-
-**2. Configure routing:**
 ```java
-// API Gateway Configuration
-@Configuration
-public class GatewayConfig {
-    
-    @Bean
-    public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
-        return builder.routes()
-            // Route /users/** to User Service
-            .route("user-service", r -> r
-                .path("/users/**")
-                .uri("http://user-service:8081"))
-            
-            // Route /orders/** to Order Service
-            .route("order-service", r -> r
-                .path("/orders/**")
-                .uri("http://order-service:8082"))
-            
-            .build();
-    }
+@Bean
+public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
+    return builder.routes()
+        .route("user-service", r -> r
+            .path("/users/**")
+            .uri("http://user-service:8081"))
+        .route("order-service", r -> r
+            .path("/orders/**")
+            .uri("http://order-service:8082"))
+        .build();
 }
 ```
 
-**3. Client calls only API Gateway:**
-```bash
-# All calls go through API Gateway
-curl http://localhost:8080/users
-curl http://localhost:8080/orders
-```
-
-**Reference:**
-https://spring.io/projects/spring-cloud-gateway
+**Reference:** https://spring.io/projects/spring-cloud-gateway
 
 ---
 
@@ -1440,17 +1320,7 @@ https://spring.io/projects/spring-cloud-gateway
 - ❌ Too complex for beginners
 - ❌ Require additional infrastructure
 
-**What you built today:**
-- ✅ Demonstrates core microservices concepts
-- ✅ Shows inter-service communication
-- ✅ Realistic for learning
-- ✅ Foundation for advanced topics
-
-**Next steps:**
-- Master these basics first
-- Then learn Service Discovery
-- Then learn API Gateway
-- Build incrementally!
+**What you built today is sufficient to understand core microservices concepts. Master these basics first, then explore Service Discovery and API Gateway.**
 
 ---
 
@@ -1462,10 +1332,7 @@ https://spring.io/projects/spring-cloud-gateway
 docker compose down
 ```
 
-**Removes:**
-- ✅ All containers
-- ✅ Network
-- ✅ Keeps volumes (data persists)
+**Removes:** Containers + Network. Data volumes kept (data persists).
 
 ### Remove Everything Including Data
 
@@ -1473,19 +1340,12 @@ docker compose down
 docker compose down -v
 ```
 
-**Removes:**
-- ✅ Containers
-- ✅ Network
-- ✅ Volumes (data deleted!)
+**Removes:** Containers + Network + Volumes (data deleted!)
 
 ### Restart Services Later
 
 ```bash
-# Build and start
 docker compose up -d --build
-
-# Or just start (if already built)
-docker compose up -d
 ```
 
 ---
@@ -1545,50 +1405,6 @@ docker compose up -d
 
 ---
 
-### Microservices Benefits Demonstrated
-
-**✅ Independent Deployment**
-- Update User Service without touching Order Service
-
-**✅ Technology Flexibility**
-- Could rewrite User Service in Python
-- Order Service wouldn't change
-
-**✅ Scalability**
-- Scale User Service independently
-- ```yaml
-  user-service:
-    deploy:
-      replicas: 3  # Run 3 instances
-  ```
-
-**✅ Fault Isolation**
-- If User Service down, Order Service can handle gracefully
-
----
-
-### Challenges You Experienced
-
-**❌ Complexity**
-- Two projects instead of one
-- More configuration files
-- More moving parts
-
-**❌ Testing Complexity**
-- Must test both services
-- Must test integration
-
-**❌ Network Latency**
-- HTTP calls slower than method calls
-- User validation adds latency to order creation
-
-**❌ Operations**
-- More containers to manage
-- More logs to check
-- More potential failure points
-
----
-
 ### When to Use Microservices
 
 **Use Microservices for:**
@@ -1623,11 +1439,7 @@ docker compose up -d
 - [Microservices Tutorial](https://www.youtube.com/results?search_query=spring+boot+microservices+tutorial)
 - [Docker Compose with Spring Boot](https://www.youtube.com/results?search_query=docker+compose+spring+boot+microservices)
 
-### GitHub Examples
-- [Spring Boot Microservices Example](https://github.com/search?q=spring+boot+microservices+example)
-
 ---
-
 
 **You now understand:**
 - ✅ How microservices work in practice
@@ -1636,4 +1448,4 @@ docker compose up -d
 - ✅ Service decomposition
 - ✅ Advanced concepts (Service Discovery, API Gateway)
 
-**You're ready to build larger microservices systems!** 
+**You're ready to build larger microservices systems!**
