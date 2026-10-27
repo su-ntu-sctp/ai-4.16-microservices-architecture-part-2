@@ -1,8 +1,8 @@
 # Assessment / Quiz
 
 ## Overview
-- **Lesson:** Microservices Architecture - Part 2 (Practical Demo)
-- **Format:** 10 questions (mix MCQ / True–False / Short Answer)
+- **Lesson:** Microservices Architecture - Part 2 (Practical)
+- **Format:** 10 questions (mix MCQ / True–False)
 - **Time:** ~10–15 minutes
 - **Scoring:** 1 point each (unless stated)
 
@@ -10,7 +10,7 @@
 
 ### Q1 (True/False)
 
-Q1: In a microservices architecture, each service should have its own independent database rather than sharing a single database?
+Q1: In the lesson, each microservice is built and published as its own Docker image?
 
 A - True
 
@@ -18,19 +18,19 @@ B - False
 
 ---
 
-Q2: How do microservices communicate with each other in the User Service and Order Service demo?
+Q2: Why don't you need Maven installed on your computer to build the images in this lesson?
 
-A - Direct database access
+A - Docker Hub builds the JAR for you
 
-B - Shared memory
+B - The multi-stage Dockerfile runs Maven inside the build stage
 
-C - REST API calls over HTTP
+C - Railway compiles the Java code
 
-D - File sharing
+D - Spring Boot does not need to be compiled
 
 ---
 
-Q3: In Docker Compose, services on the same network can communicate using container names instead of IP addresses?
+Q3: Inside the Docker Compose network, Order Service reaches User Service at `http://user-service:8080` - using the service name instead of an IP address?
 
 A - True
 
@@ -38,31 +38,55 @@ B - False
 
 ---
 
-Q4: What does the Order Service do before creating an order?
+Q4: In `ports: "8081:8080"`, which number is the port on your computer (the host)?
 
-A - Nothing, it creates the order immediately
+A - 8080
 
-B - Calls the User Service to validate the user exists
+B - 8081
 
-C - Sends an email notification
+C - Both
 
-D - Updates the inventory
-
----
-
-Q5: Which Spring component is used to make HTTP calls to other services?
-
-A - HttpClient
-
-B - RestTemplate
-
-C - WebClient
-
-D - ServiceCaller
+D - Neither - Docker picks a random port
 
 ---
 
-Q6: Each microservice should expose its port to the host machine on a different port number to avoid conflicts?
+Q5: What does `depends_on: user-service: condition: service_healthy` do?
+
+A - Restarts order-service whenever user-service crashes
+
+B - Starts order-service only after user-service passes its healthcheck
+
+C - Copies the user-service database into order-service
+
+D - Builds both images at the same time
+
+---
+
+Q6: You stop only user-service and try to create an order. What does Order Service return?
+
+A - 201 Created
+
+B - 400 Bad Request
+
+C - 503 Service Unavailable
+
+D - 200 OK
+
+---
+
+Q7: Why are the images built with `--platform linux/amd64` before pushing them for Railway?
+
+A - It makes the image smaller
+
+B - Railway runs on amd64 servers, and an ARM image built on Apple Silicon would fail with `exec format error`
+
+C - Docker Hub only accepts amd64 images
+
+D - It is required for multi-stage builds
+
+---
+
+Q8: Railway runs your `docker-compose.yml` automatically when you deploy from Docker Hub?
 
 A - True
 
@@ -70,39 +94,19 @@ B - False
 
 ---
 
-Q7: What is the purpose of Service Discovery in microservices architecture?
+Q9: On Railway, which value of `USER_SERVICE_URL` lets Order Service call User Service over the private network?
 
-A - To find bugs in the code
+A - `http://localhost:8081`
 
-B - To automatically locate available service instances
+B - `http://user-service:8080`
 
-C - To discover new features
+C - `http://user-service.railway.internal:8080`
 
-D - To search the database
-
----
-
-Q8: An API Gateway provides a single entry point for all microservices, routing requests to the appropriate service?
-
-A - True
-
-B - False
+D - `https://hub.docker.com/user-service`
 
 ---
 
-Q9: In the docker-compose.yml file, what does the `depends_on` configuration do?
-
-A - Deletes dependent services
-
-B - Defines the startup order of services
-
-C - Combines services into one container
-
-D - Creates backups
-
-----
-
-Q10: Microservices introduce more operational complexity compared to monolithic applications?
+Q10: An API Gateway provides a single entry point for clients and routes each request to the right microservice?
 
 A - True
 

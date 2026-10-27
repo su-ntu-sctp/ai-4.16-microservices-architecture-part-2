@@ -2,94 +2,60 @@
 
 ## Brief
 
-Build a working microservices system with two independent services that communicate via REST APIs and deploy using Docker Compose.
+Package, run and deploy a two-service microservices system - the `microservices-demo` User Service and Order Service - using Docker, Docker Compose, Docker Hub and Railway. The Java code is provided; this exercise is about the DevOps work around it.
 
-1. **Build User Service and Order Service Microservices**
-   - Create two separate Spring Boot projects:
-     - **User Service** (port 8081)
-     - **Order Service** (port 8082)
-   - For User Service, create:
-     - User entity with id, firstName, lastName, email fields
-     - UserRepository extending JpaRepository
-     - UserService with methods: getAllUsers(), getUserById(), createUser()
-     - UserController with REST endpoints:
-       - GET /api/users (get all users)
-       - GET /api/users/{id} (get user by ID)
-       - POST /api/users (create new user)
-   - For Order Service, create:
-     - Order entity with id, userId, productName, quantity, totalPrice, status, orderDate fields
-     - UserDTO class to receive user data from User Service
-     - OrderRepository extending JpaRepository
-     - OrderService that uses RestTemplate to call User Service for validation
-     - OrderController with REST endpoints:
-       - GET /api/orders (get all orders)
-       - GET /api/orders/{id} (get order by ID)
-       - GET /api/orders/user/{userId} (get orders by user)
-       - POST /api/orders (create order - validates user exists first)
-     - AppConfig class with RestTemplate bean
-   - Configure application.properties for both services with:
-     - Server port (8081 for User, 8082 for Order)
-     - Database connection (PostgreSQL)
-     - For Order Service: add user.service.url property
-   - Create Dockerfile for both services
-   - Build JAR files: `mvn clean package -DskipTests`
-
-2. **Configure and Deploy with Docker Compose**
-   - Create a docker-compose.yml file that defines:
-     - user-service (maps to port 8081)
-     - order-service (maps to port 8082)
-     - user-db (PostgreSQL on port 5433)
-     - order-db (PostgreSQL on port 5434)
-   - Configure environment variables for each service:
-     - Database URLs, usernames, passwords
-     - For order-service: USER_SERVICE_URL=http://user-service:8080
-   - Set up proper service dependencies (depends_on)
-   - Create named volumes for database persistence
-   - Create a custom network for service communication
-   - Start all services: `docker compose up -d --build`
-   - Verify all containers are running: `docker compose ps`
-   - Check logs to ensure services started successfully
-
-3. **Test Inter-Service Communication**
-   - Create at least 3 users via User Service API:
+1. **Containerize and Run Locally**
+   - Download the starter project (tag `v4.16.0`):
 ```bash
-     curl -X POST http://localhost:8081/api/users \
-       -H "Content-Type: application/json" \
-       -d '{"firstName":"John","lastName":"Doe","email":"john@example.com"}'
+     curl -L -O https://github.com/aie-devops/microservices-demo/archive/refs/tags/v4.16.0.zip
+     unzip v4.16.0.zip
 ```
-   - Verify users were created: `curl http://localhost:8081/api/users`
-   - Create orders for existing users via Order Service:
-```bash
-     curl -X POST http://localhost:8082/api/orders \
-       -H "Content-Type: application/json" \
-       -d '{"userId":1,"productName":"Laptop","quantity":1,"totalPrice":1299.99}'
-```
-   - Verify Order Service successfully called User Service by checking:
-     - Orders were created successfully
-     - Service logs show the HTTP call
-   - Test error handling by creating an order for non-existent user (userId: 999)
-   - Verify order creation fails with appropriate error
-   - Get all orders: `curl http://localhost:8082/api/orders`
-   - Get orders for specific user: `curl http://localhost:8082/api/orders/user/1`
-   - Take screenshots showing:
-     - All containers running
-     - Successful user creation
-     - Successful order creation
-     - Failed order creation for invalid user
+   - Create your own GitHub repository and add the project to it
+   - Add a multi-stage `Dockerfile` and a `.dockerignore` to both `user-service/` and `order-service/`
+   - Add a `docker-compose.yml` in the project root that:
+     - Builds both services from their folders
+     - Maps user-service to host port 8081 and order-service to host port 8082
+     - Sets `USER_SERVICE_URL` for order-service so it can reach user-service by its service name
+     - Adds a healthcheck to user-service (`/actuator/health`) and starts order-service only when user-service is healthy
+   - Start everything with `docker compose up --detach --build` and confirm both containers are running with `docker compose ps`
+   - Create at least 3 users and at least 3 orders for existing users
+   - Create an order for a user that doesn't exist (userId `999`) and confirm it fails with `400 Bad Request`
+   - Stop only user-service, try to create an order, and record the status code and message you get
+
+2. **Publish and Deploy to Railway**
+   - Build both images for `linux/amd64` and push them to Docker Hub as `YOUR_DOCKERHUB_USERNAME/user-service:v4.16.0` and `YOUR_DOCKERHUB_USERNAME/order-service:v4.16.0`
+   - In **one** Railway project, deploy both images as two services named `user-service` and `order-service`
+   - Set `USER_SERVICE_URL` on order-service so it calls user-service over Railway's **private network**
+   - Generate public domains and test the live system: create users, create a valid order (`201`) and an invalid order (`400`)
+   - **Challenge:** remove user-service's public domain. Does creating an order still work? Why? What does this tell you about which services need to be public?
+
+3. **Document Your Work**
+   - Write a `README.md` in your repository that includes:
+     - Your live Railway URLs for both services
+     - Screenshots showing:
+       - `docker compose ps` with both containers running (user-service healthy)
+       - A successful order (`201`) and a failed order for user `999` (`400`)
+       - The `503` response when user-service was stopped
+       - Your Railway project with both services deployed
+     - A table comparing how you configured the system in Docker Compose vs Railway (images, ports, environment variables, how order-service finds user-service)
    - Write a brief explanation (5-6 sentences) describing:
-     - How the two services communicate
+     - How the two services communicate, locally and on Railway
      - Why each service has its own database
-     - What happens when Order Service creates an order
-     - The benefits of this microservices architecture
+     - What happened when user-service was stopped, and how an asynchronous design would change that
      - One challenge you encountered and how you solved it
+
+## Stretch Goal (Optional)
+
+Automate the publishing step: add a CI pipeline (GitHub Actions or CircleCI - refer to Lessons 4.7 and 4.9) that builds **both** images and pushes them to Docker Hub on every push to `main`.
 
 ## Submission (Optional)
 
 - Submit the URL of the GitHub Repository that contains your work to NTU black board.
 - Should you reference the work of your classmate(s) or online resources, give them credit by adding either the name of your classmate or URL.
+- Delete your Railway project afterwards to save your trial credit.
 
 ## References
-- Java: https://docs.oracle.com/javase/
-- Spring Boot: https://docs.spring.io/spring-boot/docs/current/reference/html/
-- PostgreSQL: https://www.postgresql.org/docs/
-- OWASP: https://cheatsheetseries.owasp.org/
+- Docker Compose: https://docs.docker.com/compose/
+- Docker Hub: https://docs.docker.com/docker-hub/
+- Railway Private Networking: https://docs.railway.com/guides/private-networking
+- Spring Boot: https://docs.spring.io/spring-boot/index.html
